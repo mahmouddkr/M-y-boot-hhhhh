@@ -1,0 +1,13 @@
+{
+  "name": "discord-panel-bot",
+  "version": "1.0.0",
+  "description": "Discord admin panel bot with confirmation steps",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "express": "^4.21.1"
+  }
+}
