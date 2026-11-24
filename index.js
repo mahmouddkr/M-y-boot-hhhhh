@@ -86,41 +86,44 @@ client.on('interactionCreate', async (interaction) => {
       const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('btn_add_channels_bulk')
-          .setLabel('add Chanel')
+          .setLabel('ADD CHANEL')
           .setEmoji('➕')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId('btn_del_all_channels')
-          .setLabel('Remove Chanel')
+          .setLabel('REMOVE CHANEL')
           .setEmoji('🗑️')
-          .setStyle(ButtonStyle.Danger),
-        new ButtonBuilder()
-          .setCustomId('btn_add_roles_bulk')
-          .setLabel('add role')
-          .setEmoji('🎭')
-          .setStyle(ButtonStyle.Primary)
+          .setStyle(ButtonStyle.Danger)
       );
 
       const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
+          .setCustomId('btn_add_roles_bulk')
+          .setLabel('ADD ROLE')
+          .setEmoji('🎭')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
           .setCustomId('btn_del_all_roles')
-          .setLabel('Remove role')
+          .setLabel('REMOVE ROLE')
           .setEmoji('❌')
-          .setStyle(ButtonStyle.Secondary),
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      const row3 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('btn_ban_all_members')
-          .setLabel('Ban')
+          .setLabel('BAN')
           .setEmoji('🔨')
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId('btn_send_messages')
-          .setLabel('Spam')
+          .setLabel('SPAM')
           .setEmoji('📨')
           .setStyle(ButtonStyle.Primary)
       );
 
       await interaction.reply({
-        components: [row1, row2]
+        components: [row1, row2, row3]
       });
       return;
     }
