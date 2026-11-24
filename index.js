@@ -46,7 +46,6 @@ const commands = [
 const pendingActions = new Map();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// تحويل المدخلات الرقمية الكبيرة إلى عدد صحيح آمن أو Infinity عند كتابة رقم هائل جداً
 function parseUnboundedCount(raw) {
   const cleaned = String(raw ?? '').trim().replace(/[,_\s]/g, '');
   if (!cleaned) return NaN;
@@ -76,7 +75,6 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async (interaction) => {
   try {
-    // إرسال الأزرار فقط بدون أي Embed أو نصوص إضافية
     if (interaction.isChatInputCommand() && interaction.commandName === 'panel') {
       if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
         return interaction.reply({
@@ -135,7 +133,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // 1) إضافة عدة رومات بنفس الاسم بعدد غير محدد
       if (interaction.customId === 'btn_add_channels_bulk') {
         const modal = new ModalBuilder()
           .setCustomId('modal_add_channels_bulk')
@@ -162,7 +159,6 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.showModal(modal);
       }
 
-      // 2) إضافة عدة رولات بنفس الاسم بعدد غير محدد
       if (interaction.customId === 'btn_add_roles_bulk') {
         const modal = new ModalBuilder()
           .setCustomId('modal_add_roles_bulk')
@@ -189,7 +185,6 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.showModal(modal);
       }
 
-      // 3) تأكيد حذف جميع الرومات
       if (interaction.customId === 'btn_del_all_channels') {
         pendingActions.set(interaction.user.id, { type: 'delete_all_channels' });
 
@@ -211,7 +206,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // 4) تأكيد حذف جميع الرولات
       if (interaction.customId === 'btn_del_all_roles') {
         pendingActions.set(interaction.user.id, { type: 'delete_all_roles' });
 
@@ -233,7 +227,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // 5) تأكيد حظر جميع الأعضاء القابلين للحظر
       if (interaction.customId === 'btn_ban_all_members') {
         pendingActions.set(interaction.user.id, { type: 'ban_all_members' });
 
@@ -255,7 +248,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // 6) إرسال رسائل: نص الرسالة + عدد الرسائل في كل روم + عدد الشانيلات
       if (interaction.customId === 'btn_send_messages') {
         const modal = new ModalBuilder()
           .setCustomId('modal_send_messages')
@@ -279,7 +271,7 @@ client.on('interactionCreate', async (interaction) => {
           .setCustomId('channels_target_count')
           .setLabel('عدد الشانيلات التي ترسل فيها (غير محدد)')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('مثال: 3 أو 1000000000')
+          .setPlaceholder('مثال: 10 أو 1000000000')
           .setRequired(true);
 
         modal.addComponents(
@@ -290,7 +282,6 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.showModal(modal);
       }
 
-      // تنفيذ التأكيد
       if (interaction.customId === 'confirm_action') {
         const actionData = pendingActions.get(interaction.user.id);
         if (!actionData) {
@@ -305,7 +296,8 @@ client.on('interactionCreate', async (interaction) => {
         if (actionData.type === 'delete_all_channels') {
           await interaction.update({ content: '⏳ جاري حذف الرومات...', components: [] });
           let deleted = 0;
-          const channels = [...interaction.guild.channels.cache.values()];
+          const fetchedChannels = await interaction.guild.channels.fetch();
+          const channels = [...fetchedChannels.values()].filter(Boolean);
 
           for (const ch of channels) {
             try {
@@ -381,7 +373,6 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
-      // تنفيذ إنشاء رومات بنفس الاسم بعدد غير محدد
       if (interaction.customId === 'modal_add_channels_bulk') {
         const targetCount = parseUnboundedCount(
           interaction.fields.getTextInputValue('channels_count')
@@ -421,7 +412,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // تنفيذ إنشاء رولات بنفس الاسم بعدد غير محدد
       if (interaction.customId === 'modal_add_roles_bulk') {
         const targetCount = parseUnboundedCount(
           interaction.fields.getTextInputValue('roles_count')
@@ -458,7 +448,6 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // تنفيذ إرسال الرسائل: نص الرسالة + عدد الرسائل في كل روم + عدد الشانيلات
       if (interaction.customId === 'modal_send_messages') {
         const messageText = interaction.fields.getTextInputValue('message_text').trim();
         const messagesPerChannel = parseUnboundedCount(
@@ -481,12 +470,15 @@ client.on('interactionCreate', async (interaction) => {
         }
 
         await interaction.reply({
-          content: '⏳ جاري إرسال الرسائل...',
+          content: '⏳ جاري جلب الشانيلات والبدء بالإرسال...',
           flags: MessageFlags.Ephemeral
         });
 
-        const allTextChannels = [...interaction.guild.channels.cache.values()].filter(
+        const fetchedChannels = await interaction.guild.channels.fetch();
+
+        const allTextChannels = [...fetchedChannels.values()].filter(
           (ch) =>
+            ch &&
             ch.isTextBased() &&
             !ch.isThread() &&
             ch.permissionsFor(client.user)?.has(PermissionFlagsBits.SendMessages)
@@ -498,23 +490,33 @@ client.on('interactionCreate', async (interaction) => {
             : allTextChannels.slice(0, channelsLimit);
 
         let sentTotal = 0;
+        let usedChannels = 0;
+
         for (const ch of targetChannels) {
+          usedChannels++;
+          let sentInThisChannel = 0;
+
           for (let i = 0; i < messagesPerChannel; i++) {
             try {
               await ch.send(messageText);
+              sentInThisChannel++;
               sentTotal++;
+
               if (sentTotal % 50 === 0) {
                 console.log(`📨 تم إرسال ${sentTotal} رسالة حتى الآن`);
               }
               await sleep(250);
-            } catch (_) {
+            } catch (err) {
+              console.error(`⚠️ تعذر الإرسال في الشانيل ${ch.name}:`, err.message);
               break;
             }
           }
+
+          console.log(`✅ الشانيل #${ch.name}: تم إرسال ${sentInThisChannel} رسالة.`);
         }
 
         return interaction.followUp({
-          content: `✅ تم إرسال ${sentTotal} رسالة عبر ${targetChannels.length} شانيل.`,
+          content: `✅ اكتمل الإرسال: تم إرسال **${sentTotal}** رسالة في **${usedChannels}** شانيل.`,
           flags: MessageFlags.Ephemeral
         });
       }
