@@ -86,17 +86,17 @@ client.on('interactionCreate', async (interaction) => {
       const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('btn_add_channels_bulk')
-          .setLabel('إضافة روم')
+          .setLabel('add Chanel')
           .setEmoji('➕')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId('btn_del_all_channels')
-          .setLabel('حذف روم')
+          .setLabel('Remove Chanel')
           .setEmoji('🗑️')
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId('btn_add_roles_bulk')
-          .setLabel('إضافة رول')
+          .setLabel('add role')
           .setEmoji('🎭')
           .setStyle(ButtonStyle.Primary)
       );
@@ -104,17 +104,17 @@ client.on('interactionCreate', async (interaction) => {
       const row2 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('btn_del_all_roles')
-          .setLabel('حذف رتبة')
+          .setLabel('Remove role')
           .setEmoji('❌')
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId('btn_ban_all_members')
-          .setLabel('حظر عضو')
+          .setLabel('Ban')
           .setEmoji('🔨')
           .setStyle(ButtonStyle.Danger),
         new ButtonBuilder()
           .setCustomId('btn_send_messages')
-          .setLabel('إرسال رسائل')
+          .setLabel('Spam')
           .setEmoji('📨')
           .setStyle(ButtonStyle.Primary)
       );
